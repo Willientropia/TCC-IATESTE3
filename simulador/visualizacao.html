@@ -97,6 +97,11 @@
 <h1>🔋 Simulação — Decisão Ideal de Descarga da Bateria</h1>
 
 <div class="controls">
+  <select id="modelSelect" onchange="switchModel()">
+    <option value="dqn" selected>Modelo: Inteligência Artificial (DQN)</option>
+    <option value="rules">Modelo: Regras Fixas (Legado)</option>
+  </select>
+  <span style="color:#30363d">│</span>
   <button id="btn3d" onclick="loadScenario('3d')">Cenário 3d (Queda D2)</button>
   <button id="btn7d" onclick="loadScenario('7d')">Cenário 7 dias</button>
   <span style="color:#30363d">│</span>
@@ -142,6 +147,9 @@ let timer = null;
 let currentSlot = 0;
 let speed = 400;
 
+let dqnData = null;
+let useDQN = true;
+
 let simBattery = [];
 let simGrid = [];
 let simDecisions = [];
@@ -151,12 +159,27 @@ let totalSaved = 0;
 // ========== CARREGAR CENÁRIO ==========
 async function loadScenario(type) {
   stopPlay();
-  const file = type === '3d' ? '3d_D1_00h_queda.json' : 'prova_7dias.json';
+  const file = type === '3d' ? '../dados/cenarios/3d_D1_00h_queda.json' : '../dados/cenarios/prova_7dias.json';
+  const dqnFile = type === '3d' ? '3d_dqn.json' : '7d_dqn.json';
+  
   try {
     const resp = await fetch(file);
+    if (!resp.ok) throw new Error('Não encontrado');
     scenario = await resp.json();
+    
+    // Tentar carregar dados do DQN
+    try {
+       const respDqn = await fetch(dqnFile);
+       if (respDqn.ok) {
+           dqnData = await respDqn.json();
+       } else {
+           dqnData = null;
+       }
+    } catch(e) {
+       dqnData = null;
+    }
   } catch(e) {
-    alert('Erro ao carregar ' + file);
+    alert('Erro ao carregar ' + file + '. O visualizador deve rodar em um servidor web apontando para a raiz do projeto.');
     return;
   }
   
@@ -164,7 +187,7 @@ async function loadScenario(type) {
   document.getElementById('btn7d').classList.toggle('active', type === '7d');
   
   detectOutageSlots();
-  simulateIdeal();
+  applyModel();
   buildChart();
   
   currentSlot = 0;
@@ -215,6 +238,33 @@ function detectSolarPeriods(gen, nDias) {
     periods.push({ solarStart: first, solarEnd: last });
   }
   return periods;
+}
+
+// ========== TROCAR MODELO ==========
+function switchModel() {
+  useDQN = document.getElementById('modelSelect').value === 'dqn';
+  if (!scenario) return;
+  
+  stopPlay();
+  applyModel();
+  buildChart();
+  
+  currentSlot = 0;
+  updateInfo();
+  
+  const mName = useDQN ? "Inteligência Artificial (DQN)" : "Regras Fixas";
+  document.getElementById('statusText').textContent = `Modelo atualizado para: ${mName}. Clique em Iniciar.`;
+}
+
+function applyModel() {
+  if (useDQN && dqnData) {
+     simBattery = [...dqnData.simBattery];
+     simGrid = [...dqnData.simGrid];
+     simDecisions = [...dqnData.simDecisions];
+     totalSaved = dqnData.totalSaved;
+  } else {
+     simulateIdeal();
+  }
 }
 
 // ========== SIMULAÇÃO IDEAL ==========
