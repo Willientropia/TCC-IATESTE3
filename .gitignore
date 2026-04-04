@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+
+# PyTorch models (mantém estrutura, ignora binários grandes)
+*.pth
+!backend/rl/model/.gitkeep
+
+# Node
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dados muito grandes (leituras.json > 18MB)
+# Remover esse comentário se quiser ignorar:
+# dados/leituras.json
