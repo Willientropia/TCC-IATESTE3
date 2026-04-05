@@ -246,17 +246,26 @@ def main():
                 )
                 print_eval(r7d)
     
-    # 5. Salvar modelo final
+    # 5. Salvar modelo final e Histórico
     total_time = time.time() - start_time
     save_path = ROOT / args.save_path
     agent.save(save_path)
+    
+    import datetime
+    import shutil
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    history_dir = ROOT / "backend" / "rl" / "model" / "history"
+    history_dir.mkdir(exist_ok=True, parents=True)
+    history_path = history_dir / f"dqn_battery_{timestamp}_rew{int(best_eval_reward)}.pth"
+    shutil.copy(save_path, history_path)
     
     print(f"\n{'='*60}")
     print(f" ✅ Treinamento concluído!")
     print(f"    Episódios: {args.episodes}")
     print(f"    Tempo: {total_time:.0f}s ({total_time/60:.1f} min)")
     print(f"    Melhor reward: {best_eval_reward:.1f}")
-    print(f"    Modelo salvo: {save_path}")
+    print(f"    Modelo base: {save_path}")
+    print(f"    Salvo no Histórico: {history_path}")
     print(f"{'='*60}")
     
     # 6. Avaliação final

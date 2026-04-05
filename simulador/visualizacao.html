@@ -159,7 +159,7 @@ let totalSaved = 0;
 // ========== CARREGAR CENÁRIO ==========
 async function loadScenario(type) {
   stopPlay();
-  const file = type === '3d' ? '../dados/cenarios/3d_D1_00h_queda.json' : '../dados/cenarios/prova_7dias.json';
+  const file = type === '3d' ? '3d_D1_00h_queda.json' : 'prova_7dias.json';
   const dqnFile = type === '3d' ? '3d_dqn.json' : '7d_dqn.json';
   
   try {
@@ -308,12 +308,23 @@ function simulateIdeal() {
     let decision, gridW, deltaWh = 0;
     
     if (isOutage) {
-      // ===== QUEDA: bateria cobre a carga =====
+      // ===== QUEDA (OFF-GRID): Sol alimenta carga e bateria cobre a diferença =====
       decision = 'OUTAGE';
-      const needed = loadW * SLOT_H;
-      const available = Math.max(0, batteryWh - (SOC_FLOOR * CAPACITY_WH));
-      const provide = Math.min(needed, available, MAX_DISCHARGE_SLOT);
-      deltaWh = -provide;
+      const surplus = genW - loadW;
+      if (surplus >= 0) {
+        // Sobra sol! Abastece a carga e carrega bateria
+        const space = CAPACITY_WH - batteryWh;
+        const charge = Math.min(surplus * SLOT_H, space, MAX_CHARGE_SLOT);
+        deltaWh = charge;
+        // Limite físico do firmware Off-grid (o sol real que foi usado)
+        gen[i] = loadW + (charge / SLOT_H);
+      } else {
+        // Faltou sol! Bateria entra pra ajudar
+        const needed = (loadW - genW) * SLOT_H;
+        const available = Math.max(0, batteryWh - (SOC_FLOOR * CAPACITY_WH));
+        const provide = Math.min(needed, available, MAX_DISCHARGE_SLOT);
+        deltaWh = -provide;
+      }
       gridW = 0; // rede caiu
       
     } else if (inSolar) {
@@ -412,8 +423,8 @@ function computeDischargeWindows(gen, load, nDias, solarPeriods, socInicial) {
     const whPerSlot = avgNightLoad * SLOT_H;
     const dischargeSlots = whPerSlot > 0 ? Math.floor(usable / whPerSlot) : 0;
     
-    // Início da descarga = upstream do amanhecer
-    const dischargeStart = Math.max(solarEndAbsolute + 1, nextSolarStartAbsolute - dischargeSlots);
+    // Início da descarga = upstream do amanhecer (com 2 slots / 30m extras de gordura a pedido)
+    const dischargeStart = Math.max(solarEndAbsolute + 1, nextSolarStartAbsolute - (dischargeSlots + 2));
     
     windows.push({
       startSlot: dischargeStart,

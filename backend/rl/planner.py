@@ -115,10 +115,10 @@ class WeeklyPlanner:
         night_slots = SLOTS_PER_DAY - (solar_end - solar_start + 1)
         night_deficit = avg_night_load * night_slots * SLOT_H
         
-        # Slots de descarga (quantos slots a bateria aguenta)
+        # Slots de descarga (quantos slots a bateria aguenta) + 2 slots de "Gordura" a pedido do usuário
         wh_per_slot = avg_night_load * SLOT_H
         discharge_slots = int(usable / wh_per_slot) if wh_per_slot > 0 else 0
-        discharge_slots = min(discharge_slots, night_slots)
+        discharge_slots = min(discharge_slots + 2, night_slots)
         
         # Slot de início: retrocede a partir do amanhecer
         discharge_start = solar_start - discharge_slots

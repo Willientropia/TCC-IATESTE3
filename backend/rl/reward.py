@@ -23,6 +23,7 @@ def compute_reward(
     grid_ok: bool,
     is_sunrise: bool,
     energy_saved_wh: float,
+    slots_until_sunrise: int = 0,
 ) -> float:
     """
     Calcula recompensa para um slot.
@@ -109,6 +110,14 @@ def compute_reward(
         if not natural_transition:
             reward -= 3.0  # Troca sem motivo
     
+    # ========================================
+    # REGRA 6: Pacing (Não queimar a largada)
+    # ========================================
+    if not in_solar and grid_ok:
+        # Se a bateria estiver perigosamente baixa e ainda faltar mais de 2 horas pro sol:
+        if soc <= 0.15 and slots_until_sunrise > 8:
+            reward -= 5.0
+            
     # ========================================
     # REGRA auxiliar: Reserva mínima
     # ========================================

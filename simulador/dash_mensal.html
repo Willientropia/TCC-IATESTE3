@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard DQN 30 Dias</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.1.2"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: { colors: {
+        darkBg: '#0d1117', panelBg: '#161b22', borderDark: '#30363d',
+        primary: '#2f81f7', success: '#238636', danger: '#f85149',
+        sun: '#d29922', battery: '#58a6ff', load: '#f0883e', grid: '#8b5cf6'
+      }}}
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #0d1117; color: #e6edf3; }
+    .chart-container { position: relative; height: 350px; width: 100%; }
+  </style>
+</head>
+<body class="p-6">
+  <div class="max-w-7xl mx-auto space-y-6">
+    <div class="flex justify-between items-center bg-panelBg border border-borderDark rounded-xl p-6 shadow-lg">
+      <div>
+        <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+          🔋 Simulação Contínua 30 Dias (DQN Agent)
+        </h1>
+        <p class="text-sm text-gray-400 mt-1">Maratona do Modelo com Atualização do Agente 1 e Apagões Aleatórios</p>
+      </div>
+      <div class="text-right">
+        <span class="text-gray-400 text-sm">Economia Acumulada:</span>
+        <div id="economyMaster" class="text-3xl font-bold text-success mt-1">0 kWh</div>
+      </div>
+    </div>
+
+    <!-- Container for the 4 charts -->
+    <div id="chartsContainer" class="space-y-6">
+      <div class="text-center text-gray-500 py-10">⏳ Carregando dados da maratona...</div>
+    </div>
+  </div>
+
+  <script>
+    async function loadDash() {
+      try {
+        const response = await fetch('30d_dqn.json');
+        if (!response.ok) throw new Error('Falha ao carregar 30d_dqn.json. Rode o script simulate_30d.py');
+        const data = await response.json();
+        
+        document.getElementById('economyMaster').textContent = (data.totalSaved / 1000).toFixed(1) + ' kWh';
+        
+        const container = document.getElementById('chartsContainer');
+        container.innerHTML = ''; // clear loading
+        
+        data.semanas.forEach((sem, idx) => {
+          // Wrap div
+          const wrapper = document.createElement('div');
+          wrapper.className = "bg-panelBg border border-borderDark rounded-xl p-4 shadow-xl";
+          
+          const header = document.createElement('div');
+          header.className = "flex justify-between items-center mb-4 px-2";
+          header.innerHTML = `
+            <h2 class="text-lg font-semibold text-gray-200">Semana ${sem.semana}</h2>
+            <span class="text-xs font-mono text-gray-500">Slots: ${sem.simBattery.length}</span>
+          `;
+          wrapper.appendChild(header);
+
+          const chartDiv = document.createElement('div');
+          chartDiv.className = "chart-container";
+          const canvas = document.createElement('canvas');
+          canvas.id = `chartWeek${sem.semana}`;
+          chartDiv.appendChild(canvas);
+          wrapper.appendChild(chartDiv);
+          container.appendChild(wrapper);
+
+          // Build Chart Data
+          buildWeekChart(canvas.id, sem);
+        });
+
+      } catch (err) {
+        document.getElementById('chartsContainer').innerHTML = 
+          `<div class="text-danger text-center font-bold">${err.message}</div>`;
+      }
+    }
+
+    function buildWeekChart(canvasId, sem) {
+      const labels = Array.from({length: sem.simBattery.length}, (_, i) => {
+        const dia = Math.floor(i / 96) + 1;
+        const h = Math.floor((i % 96) * 15 / 60);
+        const m = (i % 96) * 15 % 60;
+        return `D${dia} ${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
+      });
+
+      // Compute outages for annotation
+      const annotations = {};
+      let outageStart = null;
+      for (let i = 0; i <= sem.outages.length; i++) {
+        const isOut = sem.outages[i] === true;
+        if (isOut && outageStart === null) outageStart = i;
+        if (!isOut && outageStart !== null) {
+          annotations['outage_' + outageStart] = {
+            type: 'box',
+            xMin: outageStart, xMax: i - 1,
+            backgroundColor: 'rgba(248, 81, 73, 0.15)',
+            borderColor: 'rgba(248, 81, 73, 0.4)',
+            borderWidth: 1,
+            label: {
+              display: true, content: 'QUEDA ALEATÓRIA', color: '#f85149',
+              font: { size: 10, weight: 'bold' }, position: 'start'
+            }
+          };
+          outageStart = null;
+        }
+      }
+
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Geração Solar (W)',
+              data: sem.simGen.map(v => Math.max(0,v)),
+              borderColor: '#d29922',
+              backgroundColor: 'rgba(210, 153, 34, 0.08)',
+              fill: true, borderWidth: 1.5, pointRadius: 0, tension: 0.2, order: 3
+            },
+            {
+              label: 'Carga / Consumo (W)',
+              data: sem.simLoad.map(v => Math.max(0,v)),
+              borderColor: '#f0883e',
+              backgroundColor: 'transparent',
+              borderWidth: 1.5, pointRadius: 0, tension: 0.2, order: 2
+            },
+            {
+              label: 'Rede (W)',
+              data: sem.simGrid,
+              borderColor: '#8b5cf6',
+              backgroundColor: 'transparent',
+              borderWidth: 1.5, pointRadius: 0, tension: 0.1, borderDash: [4, 3], order: 4
+            },
+            {
+              label: 'Bateria Restante (Wh)',
+              data: sem.simBattery,
+              borderColor: '#58a6ff',
+              backgroundColor: 'transparent',
+              borderWidth: 2, pointRadius: 0, tension: 0.3, order: 1
+            }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'top', labels: { color: '#8b949e', font: { size: 11 }, usePointStyle: true, padding: 10 } },
+            annotation: { annotations },
+            tooltip: {
+              backgroundColor: '#21262d', titleColor: '#e6edf3', bodyColor: '#8b949e',
+              borderColor: '#30363d', borderWidth: 1, padding: 10,
+              callbacks: {
+                afterBody: function(ctxArr) {
+                  const idx = ctxArr[0].dataIndex;
+                  if (idx < sem.simDecisions.length) {
+                    const dec = sem.simDecisions[idx];
+                    const map = {
+                      'STANDBY': '⏸ STANDBY', 'DISCHARGE': '⚡ DESCARGA (Economia Ativa)',
+                      'SOLAR_CHARGE': '☀️ CARGA SOLAR', 'OUTAGE': '🔴 SUPRIMENTO DE QUEDA'
+                    };
+                    return '\nDecisão DQN: ' + (map[dec] || dec);
+                  }
+                  return '';
+                }
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: '#8b949e', font: { size: 9 }, autoSkip: true, maxTicksLimit: 14 }, grid: { color: 'rgba(48, 54, 61, 0.5)' } },
+            y: { min: -500, ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: 'rgba(48, 54, 61, 0.3)' } }
+          }
+        }
+      });
+    }
+
+    // Init
+    window.addEventListener('DOMContentLoaded', loadDash);
+  </script>
+</body>
+</html>

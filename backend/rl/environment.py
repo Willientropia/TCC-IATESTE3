@@ -136,11 +136,17 @@ class BatteryEnv:
         
         # ======== FÍSICA DA BATERIA ========
         if not grid_ok:
-            # QUEDA: bateria cobre carga independente da ação
-            needed = load_w * SLOT_H
-            available = max(0, self.battery_wh - SOC_FLOOR * CAPACITY_WH)
-            provide = min(needed, available, MAX_DISCHARGE_SLOT_WH)
-            self.battery_wh -= provide
+            # OFF-GRID: O sol alimenta a carga primeiro, bateria cobre o que faltar
+            surplus = gen_w - load_w
+            if surplus >= 0:
+                charge = min(surplus * SLOT_H, CAPACITY_WH - self.battery_wh, MAX_CHARGE_SLOT_WH)
+                self.battery_wh += charge
+                gen_w = load_w + (charge / SLOT_H)
+            else:
+                needed = (load_w - gen_w) * SLOT_H
+                available = max(0, self.battery_wh - SOC_FLOOR * CAPACITY_WH)
+                provide = min(needed, available, MAX_DISCHARGE_SLOT_WH)
+                self.battery_wh -= provide
             
         elif in_solar:
             # SOLAR: carregar bateria com excedente
@@ -180,6 +186,7 @@ class BatteryEnv:
             grid_ok=grid_ok,
             is_sunrise=is_sunrise,
             energy_saved_wh=energy_saved,
+            slots_until_sunrise=self._slots_until_solar(slot_in_day) if self.plan else 0,
         )
         
         # ======== AVANÇAR ========
