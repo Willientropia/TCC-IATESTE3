@@ -58,14 +58,14 @@ class FirebaseClient:
         self.token = self._login()
 
     def _login(self):
-        print(f"🔑 Autenticando com {FB_EMAIL}...")
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Autenticando com {FB_EMAIL}...")
         url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FB_API_KEY}"
         resp = requests.post(url, json={"email": FB_EMAIL, "password": FB_PASS, "returnSecureToken": True})
         if resp.status_code == 200:
-            print("✅ Login via REST API concluído.")
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Login via REST API concluido.")
             return resp.json().get("idToken")
         else:
-            print("❌ Falha de Login:", resp.text)
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ERROR] Falha de Login: {resp.text}")
             sys.exit(1)
 
     def get_data(self, path):
@@ -90,11 +90,11 @@ class FirebaseClient:
             "createdAt": int(time.time())
         }
         self.put_data(cmd_path, payload)
-        print(f"📡 Comando Enviado! Modbus {address} -> [{value}]. CmdID: {cmd_id[:8]}")
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Comando Enviado! Modbus {address} -> [{value}]. CmdID: {cmd_id[:8]}")
 
 class AIEngine:
     def __init__(self):
-        print("🧠 Inicializando Motores da IA...")
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Inicializando Motores da IA...")
         self.fb = FirebaseClient()
         self.planner = WeeklyPlanner()
         self.agent = DQNAgent()
@@ -104,7 +104,7 @@ class AIEngine:
         if model_path.exists():
             self.agent.load(model_path)
         else:
-            print("❌ Modelo Base DQN não encontrado. Treine primeiro.")
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ERROR] Modelo Base DQN nao encontrado. Treine primeiro.")
             sys.exit(1)
             
         self.current_plan = None
@@ -112,7 +112,7 @@ class AIEngine:
 
     def fetch_historical_week(self):
         """O Agente 1 (Planner) baixa os ultimos 7 dias da Firebase para criar as janelas"""
-        print("🗓️ Lendo dados da semana passada no banco histórico (Agente 1)...")
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Lendo dados da semana passada no banco historico (Agente 1)...")
         
         now = datetime.now()
         load_list = []
@@ -155,7 +155,7 @@ class AIEngine:
             usable_wh=3000.0,
             night_deficit_wh=5000.0
         )
-        print(f"✅ Planejador Semanal Calculado: Janela livre entre slot {self.current_plan.discharge_start_slot} ao {self.current_plan.solar_start_slot}")
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Planejador Semanal Calculado: Janela livre entre slot {self.current_plan.discharge_start_slot} ao {self.current_plan.solar_start_slot}")
 
     def loop_tick(self):
         now = datetime.now()
@@ -164,7 +164,7 @@ class AIEngine:
         current_minute = now.hour * 60 + now.minute
         slot = current_minute // 15
         
-        print(f"\n[{now.strftime('%H:%M:%S')}] ⏰ Acordando DQN no Slot {slot}")
+        print(f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Acordando DQN no Slot {slot}")
         
         # 1. Puxar as estatística quente (Leitura mais recente do dia atual)
         hoje_str = now.strftime("%Y-%m-%d")
@@ -179,7 +179,7 @@ class AIEngine:
             # Encontrar a última inserção de horário
             latest_time = sorted(daily_data.keys())[-1]
             rt_data = daily_data[latest_time]
-            print(f"📥 Coleta em Tempo Real via banco Histórico: {latest_time} (ESP32 Post)")
+            print(f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Coleta em Tempo Real via banco Historico: {latest_time} (ESP32 Post)")
             
             # Lógica extraída do seu data_loader.py original
             soc_raw = rt_data.get("soc", 85.0)
@@ -193,7 +193,7 @@ class AIEngine:
             # Se fosse extrair falta de rede (Apagão) poderiamos ver depois
             grid_ok = 1.0
         else:
-            print(f"⚠️ Sem dados para o dia de hoje ({hoje_str}) ainda. Usando fallback.")
+            print(f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] [WARN] Sem dados para o dia de hoje ({hoje_str}) ainda. Usando fallback.")
         
         # 2. Avaliando premissas como os blocos de treinamento
         in_solar = (self.current_plan.solar_start_slot <= slot <= self.current_plan.solar_end_slot)
@@ -207,7 +207,7 @@ class AIEngine:
         if slots_until_sunrise < 0:
             slots_until_sunrise += 96
             
-        print(f"📊 Sensores: SOC={soc_atual*100}% | Carga={load_w}W | Sol={gen_w}W | "
+        print(f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Sensores: SOC={soc_atual*100}% | Carga={load_w}W | Sol={gen_w}W | "
               f"InSolar={in_solar} | InDischarge={in_discharge}")
         
         # 3. Montar State de PyTorch (Compatível com 12 Features do Agente)
@@ -241,35 +241,46 @@ class AIEngine:
 
         # 4. Decisão da Maquina
         action = self.agent.select_action(state, training=False)
-        acao_nome = "DISCHARGE ⚡" if action == 1 else "STANDBY ⏸"
-        print(f"🤖 IA Decidiu: {acao_nome}")
+        acao_nome = "MODO_AUTOCONSUMO" if action == 1 else "MODO_BACKUP"
+        print(f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] [INFO] IA Decidiu: {acao_nome}")
 
         # 5. Efetuar a mudanca no Inversor Fisico (se houver alteração de estado)
         novo_valor = VAL_DISCHARGE if action == 1 else VAL_STANDBY
         
         if novo_valor != self.last_decision:
-            print(f"⚠️ Ação alterada pelo Modelo! Repassando ordem Modbus pro ESP...")
+            print(f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] [WARN] Acao alterada pelo Modelo! Repassando ordem Modbus pro ESP...")
             self.fb.push_command(REG_WORKMODE, novo_valor)
             self.last_decision = novo_valor
 
         # 6. Atualizar a vitrine do Aplicativo React/Native (/ai_dashboard)
-        self.fb.put_data(PATH_DASHBOARD, {
-            "current_slot": slot,
+        
+        # 6.1 Salvar Historico em Serie Temporal
+        hist_path = f"{PATH_DASHBOARD}/history/{hoje_str}/{now.strftime('%H-%M-%S')}"
+        self.fb.put_data(hist_path, {
+            "slot": slot,
             "dqn_action": acao_nome,
-            "agent_1_start": self.current_plan.discharge_start_slot,
-            "agent_1_end": self.current_plan.solar_start_slot,
             "soc": soc_atual * 100,
             "load_w": load_w,
             "gen_w": gen_w,
-            "updatedAt": str(now)
+        })
+        
+        # 6.2 Salvar Status de Saude (Health)
+        health_path = f"{PATH_DASHBOARD}/health"
+        self.fb.put_data(health_path, {
+            "last_update": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "current_mode": acao_nome,
+            "agent_1_start": self.current_plan.discharge_start_slot,
+            "agent_1_end": self.current_plan.solar_start_slot,
+            "retrain_recommended": False, # Placeholder para logica de limite de dias
+            "system_status": "Operacional"
         })
 
 def main():
     engine = AIEngine()
     engine.fetch_historical_week()
     
-    print("\n🚀 Bridge Ativa e Operante em Servidor 24/7.")
-    print("O script vai dormir até pingar o ESP32 novamente e comandar a placa Modbus...")
+    print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Bridge Ativa e Operante em Servidor 24/7.")
+    print("O script vai dormir ate pingar o ESP32 novamente e comandar a placa Modbus...")
     try:
         while True:
             # Roda 1 Vez
@@ -277,16 +288,16 @@ def main():
             
             # Dorme 15 minutos (900 segs)
             minutos = 15
-            print(f"\n💤 Dormindo até o próximo Slot de medição... ({minutos} min)")
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Dormindo ate o proximo Slot de medicao... ({minutos} min)")
             time.sleep(minutos * 60)
             
             # Verifica se já é meia-noite de domingo para re-rolar a semana (0 = Segunda, 6 = Domingo)
             agora = datetime.now()
             if agora.weekday() == 6 and agora.hour == 23 and agora.minute >= 45:
-                print("🔄 Virada de semana! Atualizando plano do Agente 1...")
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Virada de semana! Atualizando plano do Agente 1...")
                 engine.fetch_historical_week()
     except KeyboardInterrupt:
-        print("\n⏹️ Ponte da IA Desligada pelo Operador.")
+        print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Ponte da IA Desligada pelo Operador.")
 
 if __name__ == "__main__":
     main()
