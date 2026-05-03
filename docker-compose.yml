@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  tcc-ia-bridge:
+    build: .
+    container_name: tcc-ia-bridge
+    restart: unless-stopped
+    # Mapeamos o .env para que você possa editá-lo facilmente no VPS
+    # sem precisar rebuildar o container Docker
+    volumes:
+      - ./backend/rl/.env:/app/backend/rl/.env
