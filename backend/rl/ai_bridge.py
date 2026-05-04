@@ -55,25 +55,37 @@ SLOT_H = 0.25
 
 class FirebaseClient:
     def __init__(self):
-        self.token = self._login()
+        self.token = None
+        self.token_expiry = 0
+        self._login()
 
     def _login(self):
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Autenticando com {FB_EMAIL}...")
         url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FB_API_KEY}"
         resp = requests.post(url, json={"email": FB_EMAIL, "password": FB_PASS, "returnSecureToken": True})
         if resp.status_code == 200:
+            data = resp.json()
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Login via REST API concluido.")
-            return resp.json().get("idToken")
+            self.token = data.get("idToken")
+            self.token_expiry = time.time() + float(data.get("expiresIn", 3600)) - 300 # Renovar 5 mins antes de expirar
+            return self.token
         else:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ERROR] Falha de Login: {resp.text}")
             sys.exit(1)
 
+    def _ensure_token(self):
+        if time.time() > self.token_expiry:
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [WARN] Token do Firebase expirado. Renovando...")
+            self._login()
+
     def get_data(self, path):
+        self._ensure_token()
         url = f"{FB_URL}{path}.json?auth={self.token}"
         resp = requests.get(url)
         return resp.json() if resp.status_code == 200 else None
 
     def put_data(self, path, data):
+        self._ensure_token()
         url = f"{FB_URL}{path}.json?auth={self.token}"
         requests.put(url, json=data)
         
