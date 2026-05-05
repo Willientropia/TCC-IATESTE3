@@ -157,15 +157,37 @@ class AIEngine:
         avg_night_load = np.mean(load_list) if load_list else 500.0
         avg_day_gen = np.mean(gen_list) * 12 if gen_list else 8000.0 # Estimativa de produção total baseada na média diária
         
+        # --- Cálculo Dinâmico do Agente 1 ---
+        CAPACITY_WH = 5000.0
+        SOC_TARGET_SUNRISE = 0.12
+        SLOTS_PER_DAY = 96
+        SLOT_H = 0.25
+        
+        solar_start = 24
+        solar_end = 72
+        battery_at_end = 1.0 * CAPACITY_WH
+        usable = max(0, battery_at_end - SOC_TARGET_SUNRISE * CAPACITY_WH)
+        
+        night_slots = SLOTS_PER_DAY - (solar_end - solar_start + 1)
+        night_deficit = avg_night_load * night_slots * SLOT_H
+        
+        wh_per_slot = avg_night_load * SLOT_H
+        discharge_slots = int(usable / wh_per_slot) if wh_per_slot > 0 else 0
+        discharge_slots = min(discharge_slots + 2, night_slots) # 2 slots de gordura
+        
+        discharge_start = solar_start - discharge_slots
+        if discharge_start < 0:
+            discharge_start += SLOTS_PER_DAY
+            
         self.current_plan = WeeklyPlan(
-            solar_start_slot=24,   # 06:00
-            solar_end_slot=72,     # 18:00
+            solar_start_slot=solar_start,
+            solar_end_slot=solar_end,
             avg_night_load_w=float(avg_night_load),
             avg_day_gen_wh=float(avg_day_gen),
-            discharge_start_slot=76, # Permite descarga das 19:00 até o amanhecer
-            discharge_slots=16,
-            usable_wh=3000.0,
-            night_deficit_wh=5000.0
+            discharge_start_slot=int(discharge_start),
+            discharge_slots=int(discharge_slots),
+            usable_wh=float(usable),
+            night_deficit_wh=float(night_deficit)
         )
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [INFO] Planejador Semanal Calculado: Janela livre entre slot {self.current_plan.discharge_start_slot} ao {self.current_plan.solar_start_slot}")
 
